@@ -1,5 +1,7 @@
 # Looking to Listen at the Cocktail Party
 
+(English contents is below)
+
 ## Overview
 Googleにより発表された[Looking to Listen at the Cocktail Party](https://arxiv.org/abs/1804.03619)の実装を試みている。
 今までのstate-of-the-artな音源分離の手法では、音源のみの情報を用いた分離が多いが、この提案手法では、動画の情報も用いることで、従来手法よりも
