@@ -3,6 +3,8 @@ import chainer
 import chainer.links as L
 import chainer.functions as F
 
+xp = chainer.cuda.cupy
+
 class Audio_Visual_Net(chainer.Chain):
     def __init__(self):
         super(Audio_Visual_Net, self).__init__()
@@ -25,6 +27,7 @@ class Audio_Visual_Net(chainer.Chain):
             self.conv15 = L.DilatedConvolution2D(in_channels=96, out_channels=8, stride=1, ksize=(5,5), dilate=1, pad=(2,2))
             self.bn1 = L.BatchNormalization((96,298,257))
             self.bn2 = L.BatchNormalization((96,298,257))
+            """
             self.bn3 = L.BatchNormalization((96,298,257))
             self.bn4 = L.BatchNormalization((96,298,257))
             self.bn5 = L.BatchNormalization((96,298,257))
@@ -37,6 +40,7 @@ class Audio_Visual_Net(chainer.Chain):
             self.bn12 = L.BatchNormalization((96,298,257))
             self.bn13 = L.BatchNormalization((96,298,257))
             self.bn14 = L.BatchNormalization((96,298,257))
+            """
             self.bn15 = L.BatchNormalization((8,298,257))
             
             # For Visual Streams
@@ -58,11 +62,12 @@ class Audio_Visual_Net(chainer.Chain):
             self.fc1 = L.Linear(in_size=298*400, out_size=400)
             self.fc2 = L.Linear(in_size=400, out_size=400)
             self.fc3 = L.Linear(in_size=400, out_size=600)
-            self.fc4 = L.Linear(in_size=600, out_size=514*298*1)
+            self.fc4 = L.Linear(in_size=600, out_size=2*257*298)
             
     def __call__(self, spec, face1, face2):
         a = self.bn1(self.conv1(spec))
         a = self.bn2(F.relu(self.conv2(a)))
+        """
         a = self.bn3(F.relu(self.conv3(a)))
         a = self.bn4(F.relu(self.conv4(a)))
         a = self.bn5(F.relu(self.conv5(a)))
@@ -75,8 +80,9 @@ class Audio_Visual_Net(chainer.Chain):
         a = self.bn12(F.relu(self.conv12(a)))
         a = self.bn13(F.relu(self.conv13(a)))
         a = self.bn14(F.relu(self.conv14(a)))
+        """
         a = self.bn15(F.relu(self.conv15(a)))
-        a = F.reshape(a, (8*257, 298, 1))
+        a = F.reshape(a, (-1, 8*257, 298, 1))
         
         b = self.bn_1(self.conv_1(face1))
         b = self.bn_2(F.relu(self.conv_2(b)))
@@ -95,20 +101,20 @@ class Audio_Visual_Net(chainer.Chain):
         c = F.resize_images(c, (298, 1))
         
         x = F.concat((b, c))
-        a = F.reshape(a, shape=(1,298,8*257))
-        x = F.reshape(x, shape=(1,298,512))
+        a = F.reshape(a, shape=(-1, 1, 8*257, 298))
+        x = F.reshape(x, shape=(-1, 1, 512, 298))
         x = F.concat((x, a), axis=2)        
-        x = F.reshape(x, shape=(1,2568,298))
+        x = F.reshape(x, shape=(-1,2568,298))
         
-        xs = F.split_axis(x, indices_or_sections=298, axis=2, force_tuple=True)
-        _, _, ys = self.lstm(None, None, xs)
-        y = F.vstack(map(lambda y: y[-1], ys))
-        y = F.reshape(y, shape=(1, 298, 400))
+        xs = [F.reshape(i, shape=(298,2568)) for i in x]
+        ys = self.lstm(None, None, xs)[2]
+        ys = F.stack(ys)
+        y = F.reshape(ys, shape=(-1, 1, 298, 400))
         
         y = F.relu(self.fc1(y))
         y = F.relu(self.fc2(y))
         y = F.relu(self.fc3(y))
         y = F.relu(self.fc4(y))
-        y = F.reshape(y, shape=(1,298,257*2))
+        y = F.reshape(y, shape=(-1,298,257*2))
         
         return y

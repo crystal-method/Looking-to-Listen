@@ -23,37 +23,46 @@ def main():
                         help="specify GPU")
     args = parser.parse_args()
     
+    # multi GPU
+    comm = chainermn.create_communicator()
+    
     if args.gpu >= 0:
         xp = cuda.cupy
-        cuda.get_device(args.gpu).use()
+        device = comm.intra_rank
+        cuda.get_device(device).use()
     else:
         xp = np
     
     print("loading model...")
     model = L.Classifier(Audio_Visual_Net(), lossfun=mean_squared_error, accfun=mean_squared_error)
-    if args.gpu >= 0:
-        model.to_gpu(args.gpu)
-    optimizer = chainer.optimizers.Adam()
+    #if args.gpu >= 0:
+    #    model.to_gpu(args.gpu)
+    optimizer = chainermn.create_multi_node_optimizer(
+            chainer.optimizers.Adam(), comm)
     optimizer.setup(model)
     
     print("loading data...")
-
-    X = [
-        (xp.random.rand(1, 298, 257).astype(xp.float32) + 1.,
-         xp.random.rand(1024, 75, 1).astype(xp.float32) + 1.,
-         xp.random.rand(1024, 75, 1).astype(xp.float32) + 1.,
-         xp.random.rand(298, 257*2).astype(xp.float32))
-    ]
-    train = X + X + X + X + X + X + X + X + X + X + X + X
+    if comm.rank == 0:
+        X = [
+            (xp.random.rand(1, 298, 257).astype(xp.float32) + 1.,
+             xp.random.rand(1024, 75, 1).astype(xp.float32) + 1.,
+             xp.random.rand(1024, 75, 1).astype(xp.float32) + 1.,
+             xp.random.rand(298, 257*2).astype(xp.float32))
+        ]
+        train = X + X + X + X + X + X + X + X + X + X + X + X
+        #train_iter = chainer.iterators.SerialIterator(dataset=train, batch_size=6, shuffle=True, repeat=True)
+    else:
+        train = None
+    train = chainermn.scatter_dataset(train, comm, shuffle=True)
     train_iter = chainer.iterators.SerialIterator(dataset=train, batch_size=6, shuffle=True, repeat=True)
     
     print("setting trainer...")
     updater = chainer.training.StandardUpdater(train_iter, optimizer, device=args.gpu)
     trainer = chainer.training.Trainer(updater, (10, "epoch"), out="result")
 
-    trainer.extend(extensions.LogReport())
-    trainer.extend(extensions.ProgressBar())
-    trainer.extend(extensions.PrintReport(["epoch", "main/loss"]))
+    #trainer.extend(extensions.LogReport())
+    #trainer.extend(extensions.ProgressBar())
+    #trainer.extend(extensions.PrintReport(["epoch", "main/loss"]))
     
     print("start training...")
     trainer.run()
