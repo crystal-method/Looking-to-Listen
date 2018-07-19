@@ -10,11 +10,11 @@ Googleにより発表された[Looking to Listen at the Cocktail Party](https://
 完成までにはいくつか改良・検討する必要がある。
 
 * ~~GPUへの対応~~
-* Multi GPUへの対応
+* ~~Multi GPUへの対応~~
 * ~~バッチサイズへの対応（現在はバッチサイズが１の場合のみに対応）~~
 * ~~Bi-LSTM層についての調査~~
 * ３人以上の話者の混ざった音声の分離
-* アウトプットの形
+* ~~アウトプットの形~~
 
 なにかしらのご意見があれば、ぜひとも参考にさせていただきたいと思っております。
 
@@ -40,11 +40,11 @@ Its results are better than any state-of-the-art methods with audio only data be
 Points to be improved are:
 
 * ~~GPU calculation~~
-* Multi GPU calculation
+* ~~Multi GPU calculation~~
 * ~~plural batch size~~
 * ~~research of Bi-LSTM layer~~
 * separating mixtures of 3 or more speeches
-* output shape
+* ~~output shape~~
 
 If you have some opinions or advices, let me know. We will be waiting for them.
 
