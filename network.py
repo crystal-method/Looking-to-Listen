@@ -7,16 +7,18 @@ from chainer import Chain
 from chainer import reporter
 
 # others
+import os
 import pandas as pd
-import numpy as np
 
 # ********** setup ********** #
 xp = chainer.cuda.cupy
+DATA_DIR_SPEC = ""
+DATA_DIR_VISUAL = ""     
 
 # ********** model ********** #
 class Audio_Visual_Net(Chain):
     def __init__(self, gpu, spec_len=49, face_len=12,
-                 audio_channel=96, visual_channel=256, num_fusion_units=10000):
+                 audio_channel=96, visual_channel=256, num_fusion_units=100):
         super(Audio_Visual_Net, self).__init__()
         with self.init_scope():
             # ===== Initialize variables ===== #
@@ -106,14 +108,15 @@ class Audio_Visual_Net(Chain):
     def __call__(self, num):
         # ===== Initialize variables ===== #
         audio_spec, face1, face2, true_spec = self.loadData(num=num)
-        audio_spec = F.copy(audio_spec, self.gpu)
-        face1 = F.copy(face1, self.gpu)
-        face2 = F.copy(face2, self.gpu)
-        true_spec = F.copy(true_spec, self.gpu)
+
+        # ===== Compute mask ===== #
         y = self.separateSpectrogram(spec=audio_spec, face1=face1, face2=face2)
         
         # ===== Evaluate loss ===== #
         loss = F.mean_absolute_error(y, true_spec)
+        #assert xp.isnan(loss.data).any()==False, "assert np.isnan(loss) {}".format(num)
+        if xp.isnan(loss.data).any()==True:
+            loss = chainer.Variable(xp.zeros(loss.shape))
         
         reporter.report({"loss": loss.data}, self)
         return loss
@@ -122,21 +125,23 @@ class Audio_Visual_Net(Chain):
         # ===== Initialize variables ===== #
         N = self.N
         M = self.M
-        xp = np
         
         # ===== Load data ===== #
-        audio_spec = xp.stack(
-                [xp.load("/mnt/d/datasets/Looking-to-Listen_small/spectrogram/{}.npz".format(i))["mix"].T[xp.newaxis,:N,:] \
-                 for i in num])
-        face1 = xp.stack(
-                [xp.array(pd.read_csv("/mnt/d/datasets/Looking-to-Listen_small/visual/{}/speech1.csv".format(i), header=None)).T[:,:M,xp.newaxis].astype(xp.float32) / 255. \
-                 for i in num])
-        face2 = xp.stack(
-                [xp.array(pd.read_csv("/mnt/d/datasets/Looking-to-Listen_small/visual/{}/speech2.csv".format(i), header=None)).T[:,:M,xp.newaxis].astype(xp.float32) / 255. \
-                 for i in num])
+        audio_spec = [xp.load(os.path.join(DATA_DIR_SPEC, "{}.npz".format(i)))["mix"].T[xp.newaxis,:,:] for i in num]
+
+        N_index = xp.random.randint(0,audio_spec[0].shape[1]-N)
+        audio_spec = xp.stack([i[:,N_index:(N_index+N),:] for i in audio_spec])
+        
+        M_index = int(N_index/4)
+        face1 = [ (xp.array(pd.read_csv(os.path.join(DATA_DIR_VISUAL, "{}/speech1.csv".format(i)), header=None)).T[:,:,xp.newaxis].astype(xp.float32) / 255.) for i in num]        
+        face1 = xp.stack([i[:,M_index:(M_index+M),:] for i in face1])
+        face2 = [ (xp.array(pd.read_csv(os.path.join(DATA_DIR_VISUAL, "{}/speech2.csv".format(i)), header=None)).T[:,:,xp.newaxis].astype(xp.float32) / 255.) for i in num]        
+        face2 = xp.stack([i[:,M_index:(M_index+M),:] for i in face2])
+        
         true_spec = xp.stack(
-                [xp.load("/mnt/d/datasets/Looking-to-Listen_small/spectrogram/{}.npz".format(i))["true"].T[:N,:] \
+                [xp.load(os.path.join(DATA_DIR_SPEC, "{}.npz".format(i)))["true"].T[N_index:(N_index+N),:] \
                  for i in num])
+
         true_spec /= ( xp.max(true_spec) * 1.1 )
     
         return audio_spec, face1, face2, true_spec
@@ -145,7 +150,7 @@ class Audio_Visual_Net(Chain):
         # ===== Initialize variables ===== #
         N = self.N
         
-        # ===== Audio Stream ===== #
+        # ===== Audio Stream ===== #      
         a = F.relu(self.bn1(self.conv1(spec)))
         a = F.relu(self.bn2(self.conv2(a)))
         a = F.relu(self.bn3(self.conv3(a)))
@@ -162,6 +167,7 @@ class Audio_Visual_Net(Chain):
         #a = F.relu(self.bn14(self.conv14(a)))
         a = F.relu(self.bn15(self.conv15(a)))
         a = F.concat([a[:,i,:,:] for i in range(a.shape[1])], axis=2)[:,xp.newaxis,:,:]
+        import numpy as np
         
         # ===== Visual Streams ===== #
         b = F.relu(self.bn_1(self.conv_1(face1)))
